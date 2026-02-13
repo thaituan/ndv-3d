@@ -1,32 +1,44 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
-import { ARButton } from 'three/examples/jsm/webxr/ARButton.js'
-import chairUrl from './assets/chair.glb'
-import tableUrl from './assets/table.glb'
-import chairUsdz from './assets/chair.usdz'
-import tableUsdz from './assets/table.usdz'
-import './App.css'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { TransformControls } from 'three/addons/controls/TransformControls.js'
+import { ARButton } from 'three/addons/webxr/ARButton.js'
 
-function App() {
+// Reuse the internal helper type from App for safer access
+type TransformControlsInternal = TransformControls & {
+  mouseButtons?: Record<string, number>
+  _root?: THREE.Object3D
+  root?: THREE.Object3D
+  _gizmo?: THREE.Object3D
+  gizmo?: THREE.Object3D
+  visible?: boolean
+  update?: (delta?: number) => void
+}
+
+type Props = {
+  setModeRef: React.MutableRefObject<(mode: 'translate' | 'rotate') => void>
+  duplicateRef: React.MutableRefObject<() => void>
+  addChairRef: React.MutableRefObject<() => void>
+  addTableRef: React.MutableRefObject<() => void>
+  setIsIOS: React.Dispatch<React.SetStateAction<boolean>>
+}
+
+export default function ThreeScene({
+  setModeRef,
+  duplicateRef,
+  addChairRef,
+  addTableRef,
+  setIsIOS,
+}: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null)
-  const setModeRef = useRef<(mode: 'translate' | 'rotate') => void>(() => {})
-  const duplicateRef = useRef<() => void>(() => {})
-  const addChairRef = useRef<() => void>(() => {})
-  const addTableRef = useRef<() => void>(() => {})
-  const [isIOS, setIsIOS] = useState(false)
 
   useEffect(() => {
-    // Detect iOS
     setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent))
 
-    if (!mountRef.current) {
-      return
-    }
-
+    if (!mountRef.current) return
     const container = mountRef.current
+
     const scene = new THREE.Scene()
     scene.background = new THREE.Color('#162338')
 
@@ -54,37 +66,71 @@ function App() {
     controls.maxDistance = 6
     controls.target.set(0, 0, 0)
 
-    const transformControls = new TransformControls(camera, renderer.domElement)
-    transformControls.setMode('translate')
-    transformControls.setSpace('world')
-    transformControls.setSize(1.1)
-    transformControls.addEventListener('dragging-changed', (event) => {
-      controls.enabled = !event.value
-    })
-    scene.add(transformControls)
-
-    setModeRef.current = (mode) => {
-      transformControls.setMode(mode)
+    // Temporary safe-patch around Object3D.add while TransformControls constructs
+    const _originalAdd = THREE.Object3D.prototype.add
+    THREE.Object3D.prototype.add = function (...objects: unknown[]) {
+      try {
+        return _originalAdd.apply(this, objects as unknown as Parameters<typeof _originalAdd>)
+      } catch {
+        const filtered = objects.filter((o): o is THREE.Object3D => Boolean((o as unknown as { isObject3D?: boolean }).isObject3D))
+        if (filtered.length) return _originalAdd.apply(this, filtered as unknown as Parameters<typeof _originalAdd>)
+        return this
+      }
     }
 
-    // Custom AR button with iOS detection
+    const transformControls = new TransformControls(camera, renderer.domElement)
+    const tc = transformControls as unknown as TransformControlsInternal
+
+    // restore original add implementation immediately
+    THREE.Object3D.prototype.add = _originalAdd
+
+    tc.setMode('translate')
+    tc.setSpace('world')
+    tc.setSize(1.1)
+
+    // Ensure mouse button mappings (fixes null mouseButtons in some builds)
+    tc.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    }
+
+    tc.addEventListener('dragging-changed', (event) => {
+      controls.enabled = !event.value
+    })
+
+    // Add transform controls (or fallback internal root/gizmo) to the scene so the gizmo shows
+    if ((tc as unknown as { isObject3D?: boolean }).isObject3D) {
+      scene.add(tc as unknown as THREE.Object3D)
+    } else {
+      const internalRoot = tc._root || tc.root
+      const internalGizmo = tc._gizmo || tc.gizmo
+      if (internalRoot && internalRoot.isObject3D) scene.add(internalRoot)
+      if (internalGizmo && internalGizmo.isObject3D && internalGizmo.parent == null) scene.add(internalGizmo)
+      console.debug('TransformControls fallback used (internal root/gizmo added)')
+    }
+
+    tc.showX = true
+    tc.showY = true
+    tc.showZ = true
+
+    setModeRef.current = (mode) => {
+      tc.setMode(mode)
+    }
+
     const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
     let arButton: HTMLElement
-    
+
     if (!isiOS) {
-      // Android/Desktop: Use WebXR
       arButton = ARButton.createButton(renderer, {
         requiredFeatures: ['hit-test'],
       })
       container.appendChild(arButton)
     } else {
-      // iOS: AR handled via JSX overlay with AR Quick Look links
-      arButton = document.createElement('div') // Dummy element for cleanup
+      arButton = document.createElement('div')
     }
 
-    const reticleGeometry = new THREE.RingGeometry(0.08, 0.11, 32).rotateX(
-      -Math.PI / 2,
-    )
+    const reticleGeometry = new THREE.RingGeometry(0.08, 0.11, 32).rotateX(-Math.PI / 2)
     const reticleMaterial = new THREE.MeshBasicMaterial({ color: '#7ef9ff' })
     const reticle = new THREE.Mesh(reticleGeometry, reticleMaterial)
     reticle.matrixAutoUpdate = false
@@ -120,9 +166,17 @@ function App() {
     const selectObject = (object: THREE.Object3D | null) => {
       activeObject = object
       if (activeObject) {
-        transformControls.attach(activeObject)
+        console.debug('attach object', {
+          name: (activeObject as THREE.Object3D & { name?: string }).name ?? activeObject.type,
+          scale: activeObject.scale,
+          parentScale: activeObject.parent?.scale,
+        })
+
+        tc.attach(activeObject)
+        ;(tc as unknown as THREE.Object3D).visible = true
       } else {
-        transformControls.detach()
+        tc.detach()
+        ;(tc as unknown as THREE.Object3D).visible = false
       }
     }
 
@@ -192,7 +246,7 @@ function App() {
 
     // Load initial chair
     loader.load(
-      chairUrl,
+      '/src/assets/chair.glb',
       (gltf) => {
         chair = gltf.scene
         scene.add(chair)
@@ -221,13 +275,12 @@ function App() {
     )
 
     addChairRef.current = () => {
-      addProduct(chairUrl, Math.random() * 2 - 1, Math.random() * 2 - 1)
+      addProduct('/src/assets/chair.glb', Math.random() * 2 - 1, Math.random() * 2 - 1)
     }
 
     addTableRef.current = () => {
-      // Try to load table.glb first, otherwise create simple table geometry
       loader.load(
-        tableUrl,
+        '/src/assets/table.glb',
         (gltf) => {
           const product = gltf.scene
           scene.add(product)
@@ -252,10 +305,7 @@ function App() {
         undefined,
         () => {
           console.warn('table.glb not found, creating simple table geometry')
-          // Create simple table with legs
           const tableGroup = new THREE.Group()
-          
-          // Table top
           const tableTop = new THREE.Mesh(
             new THREE.BoxGeometry(1.2, 0.05, 0.8),
             new THREE.MeshStandardMaterial({
@@ -269,7 +319,6 @@ function App() {
           tableTop.receiveShadow = true
           tableGroup.add(tableTop)
 
-          // Four legs
           const legGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.7)
           const legMaterial = new THREE.MeshStandardMaterial({
             color: '#6b5744',
@@ -392,6 +441,10 @@ function App() {
           }
         }
       }
+
+      // Ensure transform gizmo updates each frame (fixes orientation/scale issues)
+      tc.update?.(0)
+
       controls.update()
       renderer.render(scene, camera)
     }
@@ -407,7 +460,7 @@ function App() {
     }
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (renderer.xr.isPresenting || transformControls.dragging) {
+      if (renderer.xr.isPresenting || (tc as unknown as { dragging?: boolean }).dragging) {
         return
       }
       updatePointer(event)
@@ -446,10 +499,10 @@ function App() {
           activeObject.position.y -= step
           break
         case 'KeyG':
-          transformControls.setMode('translate')
+          tc.setMode('translate')
           break
         case 'KeyR':
-          transformControls.setMode('rotate')
+          tc.setMode('rotate')
           break
         case 'KeyD':
           duplicateChair()
@@ -500,7 +553,7 @@ function App() {
       reticleMaterial.dispose()
       renderer.dispose()
       controls.dispose()
-      transformControls.dispose()
+      tc.dispose()
       if (container.contains(arButton)) {
         container.removeChild(arButton)
       }
@@ -510,52 +563,6 @@ function App() {
     }
   }, [])
 
-  return (
-    <div className="app">
-      <header className="hero">
-        <h1>Nitori Demo 3D</h1>
-      </header>
-      <div className="tools">
-        <button type="button" onClick={() => setModeRef.current('translate')}>
-          Move (G)
-        </button>
-        <button type="button" onClick={() => setModeRef.current('rotate')}>
-          Rotate (R)
-        </button>
-        <button type="button" onClick={() => duplicateRef.current()}>
-          Duplicate (D)
-        </button>
-        <div className="divider" />
-        <button type="button" onClick={() => addChairRef.current()}>
-          + Add Chair
-        </button>
-        <button type="button" onClick={() => addTableRef.current()}>
-          + Add Table
-        </button>
-      </div>
-      <div ref={mountRef} className="scene" />
-      {isIOS && (
-        <div className="ios-ar-overlay">
-          <div className="ar-products">
-            <a rel="ar" href={chairUsdz} className="ar-product-card">
-              <div className="ar-card-content">
-                <div className="ar-icon">🪑</div>
-                <span className="ar-label">Chair</span>
-                <span className="ar-hint">Tap to view in AR</span>
-              </div>
-            </a>
-            <a rel="ar" href={tableUsdz} className="ar-product-card">
-              <div className="ar-card-content">
-                <div className="ar-icon">🪑</div>
-                <span className="ar-label">Table</span>
-                <span className="ar-hint">Tap to view in AR</span>
-              </div>
-            </a>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+  return <div ref={mountRef} className="scene" />
 }
 
-export default App
