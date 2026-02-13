@@ -61,7 +61,7 @@ function App() {
     transformControls.addEventListener('dragging-changed', (event) => {
       controls.enabled = !event.value
     })
-    scene.add(transformControls as unknown as THREE.Object3D)
+    scene.add(transformControls)
 
     setModeRef.current = (mode) => {
       transformControls.setMode(mode)
