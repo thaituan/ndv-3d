@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -6,6 +6,8 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { ARButton } from 'three/examples/jsm/webxr/ARButton.js'
 import chairUrl from './assets/chair.glb'
 import tableUrl from './assets/table.glb'
+import chairUsdz from './assets/chair.usdz'
+import tableUsdz from './assets/table.usdz'
 import './App.css'
 
 function App() {
@@ -14,8 +16,12 @@ function App() {
   const duplicateRef = useRef<() => void>(() => {})
   const addChairRef = useRef<() => void>(() => {})
   const addTableRef = useRef<() => void>(() => {})
+  const [isIOS, setIsIOS] = useState(false)
 
   useEffect(() => {
+    // Detect iOS
+    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent))
+
     if (!mountRef.current) {
       return
     }
@@ -62,45 +68,18 @@ function App() {
     }
 
     // Custom AR button with iOS detection
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
     let arButton: HTMLElement
     
-    if (isIOS) {
-      // iOS: Use AR Quick Look with USDZ (requires conversion)
-      const iosArButton = document.createElement('button')
-      iosArButton.textContent = 'View in AR (iOS)'
-      iosArButton.style.cssText = `
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 12px 24px;
-        font-size: 14px;
-        background: #007aff;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        z-index: 1000;
-      `
-      iosArButton.onclick = () => {
-        alert(
-          'iOS AR requires USDZ format.\n\n' +
-          'Steps:\n' +
-          '1. Convert GLB to USDZ at reality.apple.com/convert\n' +
-          '2. Upload USDZ file to public URL\n' +
-          '3. Use <a rel="ar" href="model.usdz">View in AR</a>\n\n' +
-          'Alternatively, use Android device for WebXR AR.'
-        )
-      }
-      container.appendChild(iosArButton)
-      arButton = iosArButton
-    } else {
+    if (!isiOS) {
       // Android/Desktop: Use WebXR
       arButton = ARButton.createButton(renderer, {
         requiredFeatures: ['hit-test'],
       })
       container.appendChild(arButton)
+    } else {
+      // iOS: AR handled via JSX overlay with AR Quick Look links
+      arButton = document.createElement('div') // Dummy element for cleanup
     }
 
     const reticleGeometry = new THREE.RingGeometry(0.08, 0.11, 32).rotateX(
@@ -555,10 +534,26 @@ function App() {
         </button>
       </div>
       <div ref={mountRef} className="scene" />
-      <p className="hint">
-        Keo chuot de xoay, cuon de zoom. Chon ghe roi keo gizmo X/Y/Z. Phim mui
-        ten di chuyen XZ, Q/E di chuyen len xuong.
-      </p>
+      {isIOS && (
+        <div className="ios-ar-overlay">
+          <div className="ar-products">
+            <a rel="ar" href={chairUsdz} className="ar-product-card">
+              <div className="ar-card-content">
+                <div className="ar-icon">🪑</div>
+                <span className="ar-label">Chair</span>
+                <span className="ar-hint">Tap to view in AR</span>
+              </div>
+            </a>
+            <a rel="ar" href={tableUsdz} className="ar-product-card">
+              <div className="ar-card-content">
+                <div className="ar-icon">🪑</div>
+                <span className="ar-label">Table</span>
+                <span className="ar-hint">Tap to view in AR</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

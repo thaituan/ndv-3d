@@ -102,6 +102,63 @@
   font-size: 0.95rem;
 }
 
+/* iOS AR Quick Look Overlay */
+.ios-ar-overlay {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+}
+
+.ar-products {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem;
+}
+
+.ar-product-card {
+  display: block;
+  width: 140px;
+  background: rgba(18, 29, 46, 0.95);
+  border: 1px solid rgba(126, 249, 255, 0.5);
+  border-radius: 16px;
+  padding: 1.25rem 1rem;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+
+.ar-product-card:active {
+  transform: scale(0.95);
+}
+
+.ar-card-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ar-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.ar-label {
+  color: #e8f5f2;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.ar-hint {
+  color: #7f93ad;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
 @media (max-width: 700px) {
   .app {
     padding: 2.5rem 1.25rem 2rem;
@@ -109,5 +166,18 @@
 
   .scene {
     height: 48vh;
+  }
+
+  .ar-product-card {
+    width: 120px;
+    padding: 1rem 0.75rem;
+  }
+
+  .ar-icon {
+    font-size: 2rem;
+  }
+
+  .ar-label {
+    font-size: 0.9rem;
   }
 }
