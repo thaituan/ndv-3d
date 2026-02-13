@@ -4,6 +4,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { TransformControls } from 'three/addons/controls/TransformControls.js'
 import { ARButton } from 'three/addons/webxr/ARButton.js'
+import chairUrl from './assets/chair.glb'
+import tableUrl from './assets/table.glb'
 
 // Reuse the internal helper type from App for safer access
 type TransformControlsInternal = TransformControls & {
@@ -244,9 +246,9 @@ export default function ThreeScene({
       )
     }
 
-    // Load initial chair
+    // Load initial chair (use imported URL so Vite bundles the asset)
     loader.load(
-      '/src/assets/chair.glb',
+      chairUrl,
       (gltf) => {
         chair = gltf.scene
         scene.add(chair)
@@ -275,12 +277,12 @@ export default function ThreeScene({
     )
 
     addChairRef.current = () => {
-      addProduct('/src/assets/chair.glb', Math.random() * 2 - 1, Math.random() * 2 - 1)
+      addProduct(chairUrl, Math.random() * 2 - 1, Math.random() * 2 - 1)
     }
 
     addTableRef.current = () => {
       loader.load(
-        '/src/assets/table.glb',
+        tableUrl,
         (gltf) => {
           const product = gltf.scene
           scene.add(product)
@@ -561,7 +563,7 @@ export default function ThreeScene({
         container.removeChild(renderer.domElement)
       }
     }
-  }, [])
+  }, [addChairRef, addTableRef, duplicateRef, setIsIOS, setModeRef])
 
   return <div ref={mountRef} className="scene" />
 }
