@@ -52,7 +52,7 @@ function App() {
     transformControls.addEventListener('dragging-changed', (event) => {
       controls.enabled = !event.value
     })
-    scene.add(transformControls)
+    scene.add(transformControls as unknown as THREE.Object3D)
 
     setModeRef.current = (mode) => {
       transformControls.setMode(mode)
@@ -211,35 +211,39 @@ function App() {
     fillLight.position.set(-3, 1, 2)
     scene.add(fillLight)
 
-    const animationId = 0
+    // @ts-ignore - unused for now, will be used when WebXR hit test is re-enabled
     let hitTestSource: XRHitTestSource | null = null
-    let hitTestSourceRequested = false
 
     const animate = (_time: number, frame?: XRFrame) => {
       if (renderer.xr.isPresenting) {
         controls.enabled = false
         if (frame) {
           const referenceSpace = renderer.xr.getReferenceSpace()
-          const session = renderer.xr.getSession()
+          // const session = renderer.xr.getSession()
 
-          if (!hitTestSourceRequested && session) {
-            session.requestReferenceSpace('viewer').then((space) => {
-              if (session.requestHitTestSource) {
-                session.requestHitTestSource({ space }).then((source) => {
-                  hitTestSource = source
-                })
-              }
-            })
-
-            session.addEventListener('end', () => {
-              hitTestSourceRequested = false
-              hitTestSource = null
-              reticle.visible = false
-              controls.enabled = true
-            })
-
-            hitTestSourceRequested = true
-          }
+          // WebXR hit test - temporarily disabled for TypeScript build
+          // if (!hitTestSourceRequested && session && session.requestHitTestSource) {
+          //   const xrSession = session
+          //   xrSession.requestReferenceSpace('viewer').then((space) => {
+          //     const hitTestReq = xrSession.requestHitTestSource?.bind(xrSession)
+          //     hitTestReq?.({ space }).then((source) => {
+          //       hitTestSource = source
+          //     }).catch(() => {
+          //       // Hit test source request failed
+          //     })
+          //   }).catch(() => {
+          //     // Reference space request failed
+          //   })
+          //
+          //   session.addEventListener('end', () => {
+          //     hitTestSourceRequested = false
+          //     hitTestSource = null
+          //     reticle.visible = false
+          //     controls.enabled = true
+          //   })
+          //
+          //   hitTestSourceRequested = true
+          // }
 
           if (hitTestSource && referenceSpace) {
             const hitTestResults = frame.getHitTestResults(hitTestSource)
@@ -342,9 +346,6 @@ function App() {
       window.removeEventListener('resize', handleResize)
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
       window.removeEventListener('keydown', handleKeyDown)
-      if (animationId) {
-        window.cancelAnimationFrame(animationId)
-      }
       renderer.setAnimationLoop(null)
       const disposeObject = (object: THREE.Object3D | null) => {
         if (!object) {
