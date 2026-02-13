@@ -5,12 +5,15 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import { ARButton } from 'three/examples/jsm/webxr/ARButton.js'
 import chairUrl from './assets/chair.glb'
+import tableUrl from './assets/table.glb'
 import './App.css'
 
 function App() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const setModeRef = useRef<(mode: 'translate' | 'rotate') => void>(() => {})
   const duplicateRef = useRef<() => void>(() => {})
+  const addChairRef = useRef<() => void>(() => {})
+  const addTableRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     if (!mountRef.current) {
@@ -58,10 +61,47 @@ function App() {
       transformControls.setMode(mode)
     }
 
-    const arButton = ARButton.createButton(renderer, {
-      requiredFeatures: ['hit-test'],
-    })
-    container.appendChild(arButton)
+    // Custom AR button with iOS detection
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    let arButton: HTMLElement
+    
+    if (isIOS) {
+      // iOS: Use AR Quick Look with USDZ (requires conversion)
+      const iosArButton = document.createElement('button')
+      iosArButton.textContent = 'View in AR (iOS)'
+      iosArButton.style.cssText = `
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        font-size: 14px;
+        background: #007aff;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        z-index: 1000;
+      `
+      iosArButton.onclick = () => {
+        alert(
+          'iOS AR requires USDZ format.\n\n' +
+          'Steps:\n' +
+          '1. Convert GLB to USDZ at reality.apple.com/convert\n' +
+          '2. Upload USDZ file to public URL\n' +
+          '3. Use <a rel="ar" href="model.usdz">View in AR</a>\n\n' +
+          'Alternatively, use Android device for WebXR AR.'
+        )
+      }
+      container.appendChild(iosArButton)
+      arButton = iosArButton
+    } else {
+      // Android/Desktop: Use WebXR
+      arButton = ARButton.createButton(renderer, {
+        requiredFeatures: ['hit-test'],
+      })
+      container.appendChild(arButton)
+    }
 
     const reticleGeometry = new THREE.RingGeometry(0.08, 0.11, 32).rotateX(
       -Math.PI / 2,
@@ -140,6 +180,38 @@ function App() {
 
     floorY = 0
 
+    const addProduct = (modelUrl: string, offsetX = 0, offsetZ = 0) => {
+      loader.load(
+        modelUrl,
+        (gltf) => {
+          const product = gltf.scene
+          scene.add(product)
+
+          const box = new THREE.Box3().setFromObject(product)
+          const center = box.getCenter(new THREE.Vector3())
+          const minY = box.min.y
+          product.position.sub(center)
+          product.position.y -= minY
+          product.position.y = floorY
+          product.position.x = offsetX
+          product.position.z = offsetZ
+          product.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.castShadow = true
+              child.receiveShadow = true
+            }
+          })
+          selectable.push(product)
+          selectObject(product)
+        },
+        undefined,
+        (error) => {
+          console.error('Failed to load GLB model', error)
+        },
+      )
+    }
+
+    // Load initial chair
     loader.load(
       chairUrl,
       (gltf) => {
@@ -168,6 +240,88 @@ function App() {
         console.error('Failed to load chair GLB model', error)
       },
     )
+
+    addChairRef.current = () => {
+      addProduct(chairUrl, Math.random() * 2 - 1, Math.random() * 2 - 1)
+    }
+
+    addTableRef.current = () => {
+      // Try to load table.glb first, otherwise create simple table geometry
+      loader.load(
+        tableUrl,
+        (gltf) => {
+          const product = gltf.scene
+          scene.add(product)
+
+          const box = new THREE.Box3().setFromObject(product)
+          const center = box.getCenter(new THREE.Vector3())
+          const minY = box.min.y
+          product.position.sub(center)
+          product.position.y -= minY
+          product.position.y = floorY
+          product.position.x = Math.random() * 2 - 1
+          product.position.z = Math.random() * 2 - 1
+          product.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.castShadow = true
+              child.receiveShadow = true
+            }
+          })
+          selectable.push(product)
+          selectObject(product)
+        },
+        undefined,
+        () => {
+          console.warn('table.glb not found, creating simple table geometry')
+          // Create simple table with legs
+          const tableGroup = new THREE.Group()
+          
+          // Table top
+          const tableTop = new THREE.Mesh(
+            new THREE.BoxGeometry(1.2, 0.05, 0.8),
+            new THREE.MeshStandardMaterial({
+              color: '#8b7355',
+              roughness: 0.8,
+              metalness: 0.1,
+            }),
+          )
+          tableTop.position.y = 0.7
+          tableTop.castShadow = true
+          tableTop.receiveShadow = true
+          tableGroup.add(tableTop)
+
+          // Four legs
+          const legGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.7)
+          const legMaterial = new THREE.MeshStandardMaterial({
+            color: '#6b5744',
+            roughness: 0.9,
+            metalness: 0.05,
+          })
+          const legPositions = [
+            [-0.5, 0.35, -0.35],
+            [0.5, 0.35, -0.35],
+            [-0.5, 0.35, 0.35],
+            [0.5, 0.35, 0.35],
+          ]
+          legPositions.forEach(([x, y, z]) => {
+            const leg = new THREE.Mesh(legGeometry, legMaterial)
+            leg.position.set(x, y, z)
+            leg.castShadow = true
+            leg.receiveShadow = true
+            tableGroup.add(leg)
+          })
+
+          tableGroup.position.set(
+            Math.random() * 2 - 1,
+            floorY,
+            Math.random() * 2 - 1,
+          )
+          scene.add(tableGroup)
+          selectable.push(tableGroup)
+          selectObject(tableGroup)
+        },
+      )
+    }
 
     const duplicateChair = () => {
       if (!activeObject) {
@@ -211,39 +365,38 @@ function App() {
     fillLight.position.set(-3, 1, 2)
     scene.add(fillLight)
 
-    // @ts-ignore - unused for now, will be used when WebXR hit test is re-enabled
     let hitTestSource: XRHitTestSource | null = null
+    let hitTestSourceRequested = false
 
     const animate = (_time: number, frame?: XRFrame) => {
       if (renderer.xr.isPresenting) {
         controls.enabled = false
         if (frame) {
           const referenceSpace = renderer.xr.getReferenceSpace()
-          // const session = renderer.xr.getSession()
+          const session = renderer.xr.getSession()
 
-          // WebXR hit test - temporarily disabled for TypeScript build
-          // if (!hitTestSourceRequested && session && session.requestHitTestSource) {
-          //   const xrSession = session
-          //   xrSession.requestReferenceSpace('viewer').then((space) => {
-          //     const hitTestReq = xrSession.requestHitTestSource?.bind(xrSession)
-          //     hitTestReq?.({ space }).then((source) => {
-          //       hitTestSource = source
-          //     }).catch(() => {
-          //       // Hit test source request failed
-          //     })
-          //   }).catch(() => {
-          //     // Reference space request failed
-          //   })
-          //
-          //   session.addEventListener('end', () => {
-          //     hitTestSourceRequested = false
-          //     hitTestSource = null
-          //     reticle.visible = false
-          //     controls.enabled = true
-          //   })
-          //
-          //   hitTestSourceRequested = true
-          // }
+          // WebXR hit test for Android
+          if (!hitTestSourceRequested && session && session.requestHitTestSource) {
+            const xrSession = session
+            xrSession.requestReferenceSpace('viewer').then((space: XRReferenceSpace) => {
+              xrSession.requestHitTestSource?.({ space })?.then((source: XRHitTestSource) => {
+                hitTestSource = source
+              }).catch(() => {
+                console.warn('Hit test source request failed')
+              })
+            }).catch(() => {
+              console.warn('Reference space request failed')
+            })
+
+            xrSession.addEventListener('end', () => {
+              hitTestSourceRequested = false
+              hitTestSource = null
+              reticle.visible = false
+              controls.enabled = true
+            })
+
+            hitTestSourceRequested = true
+          }
 
           if (hitTestSource && referenceSpace) {
             const hitTestResults = frame.getHitTestResults(hitTestSource)
@@ -392,6 +545,13 @@ function App() {
         </button>
         <button type="button" onClick={() => duplicateRef.current()}>
           Duplicate (D)
+        </button>
+        <div className="divider" />
+        <button type="button" onClick={() => addChairRef.current()}>
+          + Add Chair
+        </button>
+        <button type="button" onClick={() => addTableRef.current()}>
+          + Add Table
         </button>
       </div>
       <div ref={mountRef} className="scene" />
